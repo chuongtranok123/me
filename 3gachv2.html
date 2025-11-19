@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SMM Pro Admin - V4 (CRUD Users, Search/Filter/Pagination, API adapter)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .gradient-text {
+      background: linear-gradient(90deg,#3b82f6,#a855f7);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+    }
+    .sidebar-hidden {
+      transform: translateX(-100%);
+      transition: 0.3s;
+}
+
+    .sidebar-show {
+      transform: translateX(0);
+      transition: 0.3s;
+}
+
+  </style>
+</head>
+<body class="bg-gray-100">
+
+<!--
+  SMM Pro Admin V4
+  - CRUD Users modal
+  - Search / Filter / Pagination for all tables
+  - API adapter: set API.useRemote = true and API.baseUrl = 'https://...' to point to your backend
+  - If API.useRemote = false => localStorage fallback (works out-of-the-box)
+-->
+
+<div class="flex h-screen">
+  <!-- Sidebar -->
+  <div id="sidebar" class="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white fixed md:static h-full sidebar-hidden md:sidebar-show z-40">
+    <div class="p-6">
+      <h1 class="text-2xl font-bold">SMM Pro Admin</h1>
+      <p class="text-sm opacity-75">Quản trị hệ thống</p>
+    </div>
+    <nav class="mt-6">
+      <a href="#dashboard" onclick="showTab('dashboard')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-chart-line mr-3"></i> Dashboard</a>
+      <a href="#services" onclick="showTab('services')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-cogs mr-3"></i> Quản lý dịch vụ</a>
+      <a href="#vip" onclick="showTab('vip')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-crown mr-3"></i> Gói VIP</a>
+      <a href="#orders" onclick="showTab('orders')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-shopping-cart mr-3"></i> Đơn hàng</a>
+      <a href="#transactions" onclick="showTab('transactions')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-wallet mr-3"></i> Nạp tiền</a>
+      <a href="#users" onclick="showTab('users')" class="block px-6 py-3 hover:bg-white hover:bg-opacity-10 transition"><i class="fas fa-users mr-3"></i> Người dùng</a>
+    </nav>
+  </div>
+
+  <!-- Main -->
+  <div class="flex-1 overflow-auto">
+    <!-- Header -->
+    <div class="bg-white shadow px-6 py-4 flex justify-between items-center">
+      <button onclick="toggleSidebar()" class="md:hidden text-2xl mr-4 relative z-50">
+          <i class="fas fa-bars"></i>
+      </button>
+      <h2 id="pageTitle" class="text-2xl font-bold gradient-text">Dashboard</h2>
+      <div class="flex items-center space-x-4">
+        <button onclick="exportData()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"><i class="fas fa-download mr-2"></i> Export</button>
+        <label for="importFile" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 cursor-pointer"><i class="fas fa-upload mr-2"></i> Import</label>
+        <input id="importFile" type="file" accept="application/json" class="hidden" onchange="importData(event)">
+        <button onclick="resetData()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"><i class="fas fa-sync mr-2"></i> Reset</button>
+      </div>
+    </div>
+
+    <div class="p-6">
+      <!-- Dashboard -->
+      <div id="dashboardTab" class="tab-content">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+              <div class="bg-blue-100 p-3 rounded-lg"><i class="fas fa-dollar-sign text-blue-600 text-2xl"></i></div>
+              <div class="ml-4"><p class="text-gray-500 text-sm">Tổng doanh thu</p><p class="text-2xl font-bold" id="totalRevenue">0đ</p></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+              <div class="bg-green-100 p-3 rounded-lg"><i class="fas fa-shopping-cart text-green-600 text-2xl"></i></div>
+              <div class="ml-4"><p class="text-gray-500 text-sm">Đơn hàng</p><p class="text-2xl font-bold" id="totalOrders">0</p></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+              <div class="bg-purple-100 p-3 rounded-lg"><i class="fas fa-users text-purple-600 text-2xl"></i></div>
+              <div class="ml-4"><p class="text-gray-500 text-sm">Người dùng</p><p class="text-2xl font-bold" id="totalUsers">0</p></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+              <div class="bg-yellow-100 p-3 rounded-lg"><i class="fas fa-crown text-yellow-600 text-2xl"></i></div>
+              <div class="ml-4"><p class="text-gray-500 text-sm">VIP Users</p><p class="text-2xl font-bold" id="vipUsers">0</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white rounded-lg shadow p-6" style="height:320px;">
+            <h3 class="text-lg font-bold mb-4">Doanh thu (demo)</h3>
+            <canvas id="revenueChart"></canvas>
+          </div>
+          <div class="bg-white rounded-lg shadow p-6" style="height:320px;">
+            <h3 class="text-lg font-bold mb-4">Top dịch vụ</h3>
+            <canvas id="servicesChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Services Tab (Search + Pagination) -->
+      <div id="servicesTab" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow p-6 mb-4 flex justify-between items-center">
+          <div>
+            <h3 class="text-xl font-bold">Danh sách dịch vụ</h3>
+            <p class="text-sm text-gray-500">Quản lý dịch vụ (thêm/sửa/xóa)</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="servicesSearch" oninput="renderServicesTable()" placeholder="Tìm kiếm nền tảng / tên..." class="px-3 py-2 border rounded" />
+            <select id="servicesPerPage" onchange="renderServicesTable()" class="px-2 py-2 border rounded">
+              <option value="5">5 / trang</option><option value="10" selected>10 / trang</option><option value="20">20 / trang</option>
+            </select>
+            <button onclick="addService()" class="bg-purple-600 text-white px-4 py-2 rounded"><i class="fas fa-plus mr-2"></i> Thêm</button>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Nền tảng</th>
+                <th class="px-4 py-3 text-left">Tên</th>
+                <th class="px-4 py-3 text-left">Giá</th>
+                <th class="px-4 py-3 text-left">Min</th>
+                <th class="px-4 py-3 text-left">Trạng thái</th>
+                <th class="px-4 py-3 text-left">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="servicesTableBody"></tbody>
+          </table>
+          <div id="servicesPager" class="mt-3 flex justify-end items-center gap-2"></div>
+        </div>
+      </div>
+
+      <!-- VIP -->
+      <div id="vipTab" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-xl font-bold mb-4">Cấu hình VIP</h3>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="border rounded-lg p-4">
+              <h4 class="font-bold mb-3">🥉 Bronze</h4>
+              <label class="block text-xs mb-1">Nạp tối thiểu</label>
+              <input type="number" id="bronzeMin" value="0" class="w-full px-2 py-1 border rounded mb-2 text-sm" />
+              <label class="block text-xs mb-1">Giảm giá (%)</label>
+              <input type="number" id="bronzeDiscount" value="0" class="w-full px-2 py-1 border rounded text-sm" />
+            </div>
+            <div class="border rounded-lg p-4">
+              <h4 class="font-bold mb-3">🥈 Silver</h4>
+              <label class="block text-xs mb-1">Nạp tối thiểu</label>
+              <input type="number" id="silverMin" value="500000" class="w-full px-2 py-1 border rounded mb-2 text-sm" />
+              <label class="block text-xs mb-1">Giảm giá (%)</label>
+              <input type="number" id="silverDiscount" value="5" class="w-full px-2 py-1 border rounded text-sm" />
+            </div>
+            <div class="border rounded-lg p-4">
+              <h4 class="font-bold mb-3">🥇 Gold</h4>
+              <label class="block text-xs mb-1">Nạp tối thiểu</label>
+              <input type="number" id="goldMin" value="2000000" class="w-full px-2 py-1 border rounded mb-2 text-sm" />
+              <label class="block text-xs mb-1">Giảm giá (%)</label>
+              <input type="number" id="goldDiscount" value="10" class="w-full px-2 py-1 border rounded text-sm" />
+            </div>
+            <div class="border rounded-lg p-4">
+              <h4 class="font-bold mb-3">💎 Platinum</h4>
+              <label class="block text-xs mb-1">Nạp tối thiểu</label>
+              <input type="number" id="platinumMin" value="5000000" class="w-full px-2 py-1 border rounded mb-2 text-sm" />
+              <label class="block text-xs mb-1">Giảm giá (%)</label>
+              <input type="number" id="platinumDiscount" value="15" class="w-full px-2 py-1 border rounded text-sm" />
+            </div>
+            <div class="border rounded-lg p-4">
+              <h4 class="font-bold mb-3">💠 Diamond</h4>
+              <label class="block text-xs mb-1">Nạp tối thiểu</label>
+              <input type="number" id="diamondMin" value="10000000" class="w-full px-2 py-1 border rounded mb-2 text-sm" />
+              <label class="block text-xs mb-1">Giảm giá (%)</label>
+              <input type="number" id="diamondDiscount" value="20" class="w-full px-2 py-1 border rounded text-sm" />
+            </div>
+          </div>
+          <div class="mt-4"><button onclick="saveVipSettings()" class="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700"><i class="fas fa-save mr-2"></i> Lưu cài đặt</button></div>
+        </div>
+      </div>
+
+      <!-- Orders (Search + Pagination + filter status) -->
+      <div id="ordersTab" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow p-6 mb-4 flex justify-between items-center">
+          <div>
+            <h3 class="text-xl font-bold">Đơn hàng</h3>
+            <p class="text-sm text-gray-500">Danh sách đơn hàng</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="ordersSearch" oninput="renderOrdersTable()" placeholder="Tìm mã / khách hàng / dịch vụ..." class="px-3 py-2 border rounded" />
+            <select id="ordersStatusFilter" onchange="renderOrdersTable()" class="px-2 py-2 border rounded">
+              <option value="">Tất cả trạng thái</option>
+              <option value="completed">Hoàn thành</option>
+              <option value="processing">Đang xử lý</option>
+              <option value="failed">Thất bại</option>
+            </select>
+            <select id="ordersPerPage" onchange="renderOrdersTable()" class="px-2 py-2 border rounded">
+              <option value="5">5 / trang</option><option value="10" selected>10 / trang</option><option value="20">20 / trang</option>
+            </select>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left">Mã</th>
+                <th class="px-4 py-3 text-left">Khách hàng</th>
+                <th class="px-4 py-3 text-left">Dịch vụ</th>
+                <th class="px-4 py-3 text-left">Số lượng</th>
+                <th class="px-4 py-3 text-left">Giá</th>
+                <th class="px-4 py-3 text-left">Trạng thái</th>
+                <th class="px-4 py-3 text-left">Ngày tạo</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody"></tbody>
+          </table>
+          <div id="ordersPager" class="mt-3 flex justify-end items-center gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Transactions -->
+      <div id="transactionsTab" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow p-6 mb-4 flex justify-between items-center">
+          <div>
+            <h3 class="text-xl font-bold">Lịch sử nạp tiền</h3>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="txSearch" oninput="renderTransactionsTable()" placeholder="Tìm mã / user / phương thức..." class="px-3 py-2 border rounded" />
+            <select id="txStatusFilter" onchange="renderTransactionsTable()" class="px-2 py-2 border rounded">
+              <option value="">Tất cả</option>
+              <option value="success">Thành công</option>
+              <option value="pending">Chờ</option>
+            </select>
+            <select id="txPerPage" onchange="renderTransactionsTable()" class="px-2 py-2 border rounded">
+              <option value="5">5 / trang</option><option value="10" selected>10 / trang</option><option value="20">20 / trang</option>
+            </select>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left">Mã GD</th>
+                <th class="px-4 py-3 text-left">Khách hàng</th>
+                <th class="px-4 py-3 text-left">Số tiền</th>
+                <th class="px-4 py-3 text-left">Phương thức</th>
+                <th class="px-4 py-3 text-left">Trạng thái</th>
+                <th class="px-4 py-3 text-left">Ngày tạo</th>
+              </tr>
+            </thead>
+            <tbody id="transactionsTableBody"></tbody>
+          </table>
+          <div id="txPager" class="mt-3 flex justify-end items-center gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Users: CRUD + Search + Pagination -->
+      <div id="usersTab" class="tab-content hidden">
+        <div class="bg-white rounded-lg shadow p-6 mb-4 flex justify-between items-center">
+          <div>
+            <h3 class="text-xl font-bold">Người dùng</h3>
+            <p class="text-sm text-gray-500">Quản lý người dùng (thêm / sửa / xóa)</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="usersSearch" oninput="renderUsersTable()" placeholder="Tìm theo tên / email / id..." class="px-3 py-2 border rounded" />
+            <select id="usersPerPage" onchange="renderUsersTable()" class="px-2 py-2 border rounded">
+              <option value="5">5 / trang</option><option value="10" selected>10 / trang</option><option value="20">20 / trang</option>
+            </select>
+            <button onclick="openUserModal()" class="bg-green-600 text-white px-4 py-2 rounded"><i class="fas fa-user-plus mr-2"></i> Thêm user</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-4 overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Tên</th>
+                <th class="px-4 py-3 text-left">Email</th>
+                <th class="px-4 py-3 text-left">Số dư</th>
+                <th class="px-4 py-3 text-left">Cấp VIP</th>
+                <th class="px-4 py-3 text-left">Ngày tham gia</th>
+                <th class="px-4 py-3 text-left">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+          <div id="usersPager" class="mt-3 flex justify-end items-center gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User Modal (Add/Edit) -->
+<div id="userModal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+  <div class="bg-white rounded-lg w-11/12 md:w-1/2 p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="userModalTitle" class="text-xl font-bold">Thêm người dùng</h3>
+      <button onclick="closeUserModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="space-y-3">
+      <input id="userIdInput" type="hidden" />
+      <div>
+        <label class="block text-sm mb-1">Tên</label>
+        <input id="userNameInput" class="w-full px-3 py-2 border rounded" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Email</label>
+        <input id="userEmailInput" class="w-full px-3 py-2 border rounded" />
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm mb-1">Số dư</label>
+          <input id="userBalanceInput" type="number" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">VIP</label>
+          <select id="userVipInput" class="w-full px-3 py-2 border rounded">
+            <option value="">Không</option><option>Bronze</option><option>Silver</option><option>Gold</option><option>Platinum</option><option>Diamond</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Ngày tham gia</label>
+          <input id="userJoinDateInput" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeUserModal()" class="px-4 py-2 border rounded">Hủy</button>
+        <button onclick="saveUserFromModal()" class="px-4 py-2 bg-blue-600 text-white rounded">Lưu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+function toggleSidebar() {
+  const sb = document.getElementById("sidebar");
+  if (sb.classList.contains("sidebar-hidden")) {
+    sb.classList.remove("sidebar-hidden");
+    sb.classList.add("sidebar-show");
+  } else {
+    sb.classList.remove("sidebar-show");
+    sb.classList.add("sidebar-hidden");
+  }
+}
+
+/* ===========================
+   API Adapter (remote or localStorage fallback)
+   - To use remote API: set API.useRemote = true and API.baseUrl = 'https://api.yoursite'
+   - Remote endpoints expected (example):
+       GET  /services
+       POST /services
+       PUT  /services/:id
+       DELETE /services/:id
+   - Similar endpoints for /orders, /transactions, /users, /vipConfig
+   - If remote returns JSON arrays/objects identical to localStorage structure, it will work.
+*/
+const API = {
+  useRemote: false, // <-- set true to use remote backend
+  baseUrl: '',      // <-- set to your backend base url
+  headers: {'Content-Type': 'application/json'},
+
+  async fetchJson(path, options = {}) {
+    if(!this.useRemote) throw new Error('Remote disabled');
+    const res = await fetch(this.baseUrl + path, options);
+    if(!res.ok) throw new Error('Network response was not ok: ' + res.status);
+    return res.json();
+  },
+
+  // Services
+  async getServices() {
+    if(this.useRemote) return this.fetchJson('/services');
+    return JSON.parse(localStorage.getItem('services') || '[]');
+  },
+  async createService(s) {
+    if(this.useRemote) return this.fetchJson('/services', {method:'POST', headers:this.headers, body:JSON.stringify(s)});
+    const list = await this.getServices(); const id = list.length ? Math.max(...list.map(x=>x.id))+1 : 1; s.id = id; list.push(s); localStorage.setItem('services', JSON.stringify(list)); return s;
+  },
+  async updateService(id, patch) {
+    if(this.useRemote) return this.fetchJson(`/services/${id}`, {method:'PUT', headers:this.headers, body:JSON.stringify(patch)});
+    const list = await this.getServices(); const idx = list.findIndex(x=>x.id===id); if(idx!==-1){ list[idx] = {...list[idx], ...patch}; localStorage.setItem('services', JSON.stringify(list)); return list[idx]; } throw new Error('not found');
+  },
+  async deleteService(id) {
+    if(this.useRemote){ await fetch(this.baseUrl + `/services/${id}`, {method:'DELETE'}); return; }
+    let list = await this.getServices(); list = list.filter(x=>x.id!==id); localStorage.setItem('services', JSON.stringify(list)); return;
+  },
+
+  // Orders
+  async getOrders(){ if(this.useRemote) return this.fetchJson('/orders'); return JSON.parse(localStorage.getItem('orders') || '[]'); },
+  // Transactions
+  async getTransactions(){ if(this.useRemote) return this.fetchJson('/transactions'); return JSON.parse(localStorage.getItem('transactions') || '[]'); },
+  // Users
+  async getUsers(){ if(this.useRemote) return this.fetchJson('/users'); return JSON.parse(localStorage.getItem('users') || '[]'); },
+  async createUser(u){ if(this.useRemote) return this.fetchJson('/users', {method:'POST', headers:this.headers, body:JSON.stringify(u)}); const list = await this.getUsers(); const id = list.length ? Math.max(...list.map(x=>x.id))+1 : 1; u.id = id; list.push(u); localStorage.setItem('users', JSON.stringify(list)); return u; },
+  async updateUser(id, patch){ if(this.useRemote) return this.fetchJson(`/users/${id}`, {method:'PUT', headers:this.headers, body:JSON.stringify(patch)}); const list = await this.getUsers(); const idx = list.findIndex(x=>x.id===id); if(idx!==-1){ list[idx] = {...list[idx], ...patch}; localStorage.setItem('users', JSON.stringify(list)); return list[idx]; } throw new Error('not found'); },
+  async deleteUser(id){ if(this.useRemote){ await fetch(this.baseUrl + `/users/${id}`, {method:'DELETE'}); return; } let list = await this.getUsers(); list = list.filter(x=>x.id!==id); localStorage.setItem('users', JSON.stringify(list)); },
+
+  // VIP config
+  async getVipConfig(){ if(this.useRemote) return this.fetchJson('/vipConfig'); return JSON.parse(localStorage.getItem('vipConfig') || '{}'); },
+  async saveVipConfig(c){ if(this.useRemote) return this.fetchJson('/vipConfig', {method:'PUT', headers:this.headers, body:JSON.stringify(c)}); localStorage.setItem('vipConfig', JSON.stringify(c)); return c; },
+
+  // Export/Import helpers
+  async exportAll(){
+    return {
+      services: await this.getServices(),
+      orders: await this.getOrders(),
+      transactions: await this.getTransactions(),
+      users: await this.getUsers(),
+      vipConfig: await this.getVipConfig()
+    };
+  }
+};
+
+/* ===========================
+   Local UI state & helpers for pagination and rendering
+*/
+let state = {
+  services: [], orders: [], transactions: [], users: [], vipConfig: {},
+  // current page indices (1-based)
+  servicesPage: 1, ordersPage: 1, txPage: 1, usersPage: 1
+};
+
+function numberWithSep(n){ return Number(n || 0).toLocaleString(); }
+
+/* ===========================
+   Initialize demo data (only when localStorage empty)
+   =========================== */
+function initData() {
+  if(API.useRemote) return; // do not initialize demo when remote mode
+  if(!localStorage.getItem('services')) {
+    const services = [
+      { id: 1, platform: 'Facebook', name: 'Facebook Like', price: 50, minQty: 100, status: 'active' },
+      { id: 2, platform: 'Facebook', name: 'Facebook Follow', price: 80, minQty: 100, status: 'active' },
+      { id: 3, platform: 'Instagram', name: 'Instagram Like', price: 40, minQty: 100, status: 'active' },
+      { id: 4, platform: 'Instagram', name: 'Instagram Follow', price: 70, minQty: 100, status: 'active' },
+      { id: 5, platform: 'TikTok', name: 'TikTok Like', price: 30, minQty: 100, status: 'active' },
+      { id: 6, platform: 'TikTok', name: 'TikTok Follow', price: 60, minQty: 100, status: 'active' },
+      { id: 7, platform: 'YouTube', name: 'YouTube View', price: 100, minQty: 1000, status: 'active' },
+      { id: 8, platform: 'YouTube', name: 'YouTube Subscribe', price: 150, minQty: 100, status: 'active' }
+    ];
+    localStorage.setItem('services', JSON.stringify(services));
+  }
+  if(!localStorage.getItem('orders')) {
+    const orders = [
+      { id: 'ORD001', user: 'Nguyễn Văn A', service: 'Facebook Like', quantity: 1000, price: 50000, status: 'completed', date: '2024-11-15' },
+      { id: 'ORD002', user: 'Trần Thị B', service: 'Instagram Follow', quantity: 500, price: 35000, status: 'processing', date: '2024-11-16' },
+      { id: 'ORD003', user: 'Lê Văn C', service: 'TikTok Like', quantity: 2000, price: 60000, status: 'completed', date: '2024-11-17' }
+    ];
+    localStorage.setItem('orders', JSON.stringify(orders));
+  }
+  if(!localStorage.getItem('transactions')) {
+    const txs = [
+      { id: 'TX001', user: 'Nguyễn Văn A', amount: 500000, method: 'Momo', status: 'success', date: '2024-11-14' },
+      { id: 'TX002', user: 'Trần Thị B', amount: 1000000, method: 'ATM', status: 'success', date: '2024-11-15' },
+      { id: 'TX003', user: 'Lê Văn C', amount: 200000, method: 'Thẻ cào', status: 'pending', date: '2024-11-17' }
+    ];
+    localStorage.setItem('transactions', JSON.stringify(txs));
+  }
+  if(!localStorage.getItem('users')) {
+    const users = [
+      { id: 1, name: 'Nguyễn Văn A', email: 'nguyenvana@email.com', balance: 450000, vip: 'Silver', joinDate: '2024-10-01' },
+      { id: 2, name: 'Trần Thị B', email: 'tranthib@email.com', balance: 965000, vip: 'Gold', joinDate: '2024-09-15' },
+      { id: 3, name: 'Lê Văn C', email: 'levanc@email.com', balance: 140000, vip: 'Bronze', joinDate: '2024-11-10' }
+    ];
+    localStorage.setItem('users', JSON.stringify(users));
+  }
+  if(!localStorage.getItem('vipConfig')) {
+    const vipConfig = {
+      bronze: {min:0, discount:0},
+      silver: {min:500000, discount:5},
+      gold: {min:2000000, discount:10},
+      platinum: {min:5000000, discount:15},
+      diamond: {min:10000000, discount:20}
+    };
+    localStorage.setItem('vipConfig', JSON.stringify(vipConfig));
+  }
+}
+
+/* ===========================
+   Load all data from API or localStorage
+*/
+async function loadAllData() {
+  try {
+    state.services = await API.getServices();
+    state.orders = await API.getOrders();
+    state.transactions = await API.getTransactions();
+    state.users = await API.getUsers();
+    state.vipConfig = await API.getVipConfig();
+  } catch(err) {
+    console.warn('API remote failed or disabled, falling back to localStorage. Error:', err);
+    // Ensure fallback
+    state.services = JSON.parse(localStorage.getItem('services') || '[]');
+    state.orders = JSON.parse(localStorage.getItem('orders') || '[]');
+    state.transactions = JSON.parse(localStorage.getItem('transactions') || '[]');
+    state.users = JSON.parse(localStorage.getItem('users') || '[]');
+    state.vipConfig = JSON.parse(localStorage.getItem('vipConfig') || '{}');
+  }
+  updateSummary();
+  initCharts();
+  // render current open tab tables
+  renderServicesTable();
+  renderOrdersTable();
+  renderTransactionsTable();
+  renderUsersTable();
+}
+
+/* ===========================
+   Summary
+*/
+function updateSummary(){
+  const orders = state.orders || [];
+  const txs = state.transactions || [];
+  const users = state.users || [];
+  const totalRevenue = orders.reduce((s,o)=> s + (Number(o.price) || 0),0) + txs.reduce((s,t)=> s + (Number(t.amount) || 0),0);
+  document.getElementById('totalRevenue').textContent = numberWithSep(totalRevenue) + 'đ';
+  document.getElementById('totalOrders').textContent = orders.length;
+  document.getElementById('totalUsers').textContent = users.length;
+  document.getElementById('vipUsers').textContent = users.filter(u=>u.vip && u.vip!=='').length;
+}
+
+/* ===========================
+   Charts
+*/
+let revenueChartObj=null, servicesChartObj=null;
+function initCharts(){
+  const ctx1 = document.getElementById('revenueChart').getContext('2d');
+  if(revenueChartObj) revenueChartObj.destroy();
+  revenueChartObj = new Chart(ctx1, {
+    type:'line',
+    data:{ labels:['T2','T3','T4','T5','T6','T7','CN'], datasets:[{label:'Doanh thu', data:[120000,190000,150000,220000,180000,240000,210000], borderColor:'#8b5cf6', tension:0.4}]},
+    options:{responsive:true, maintainAspectRatio:false}
+  });
+  const ctx2 = document.getElementById('servicesChart').getContext('2d');
+  if(servicesChartObj) servicesChartObj.destroy();
+  servicesChartObj = new Chart(ctx2, {
+    type:'doughnut',
+    data:{ labels:['Facebook','Instagram','TikTok','YouTube'], datasets:[{data:[30,25,25,20], backgroundColor:['#3b82f6','#ec4899','#000000','#ef4444']}]},
+    options:{responsive:true, maintainAspectRatio:false}
+  });
+}
+
+/* ===========================
+   Pagination utilities
+*/
+function paginate(array, page=1, perPage=10){
+  const total = array.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const p = Math.min(Math.max(1, page), pages);
+  const start = (p-1)*perPage;
+  const items = array.slice(start, start + perPage);
+  return {items, page:p, pages, total};
+}
+
+function renderPager(containerId, page, pages, onPage) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  if(pages <= 1) return;
+  const createBtn = (label, p, disabled=false, cls='') => {
+    const btn = document.createElement('button');
+    btn.className = `px-3 py-1 border rounded ${cls}` + (disabled ? ' opacity-50 cursor-not-allowed':'');
+    btn.textContent = label;
+    if(!disabled) btn.onclick = ()=>onPage(p);
+    el.appendChild(btn);
+  };
+  createBtn('Prev', Math.max(1, page-1), page===1);
+  // show up to 5 pages with current centered
+  const start = Math.max(1, page-2);
+  const end = Math.min(pages, start + 4);
+  for(let i=start;i<=end;i++){
+    const btn = document.createElement('button');
+    btn.className = `px-3 py-1 border rounded ${i===page?'bg-purple-600 text-white':''}`;
+    btn.textContent = i;
+    btn.onclick = ()=>onPage(i);
+    el.appendChild(btn);
+  }
+  createBtn('Next', Math.min(pages, page+1), page===pages);
+}
+
+/* ===========================
+   Render services with search/filter/pagination
+*/
+function renderServicesTable(){
+  const q = (document.getElementById('servicesSearch').value || '').toLowerCase();
+  const perPage = Number(document.getElementById('servicesPerPage').value || 10);
+  const list = (state.services || []).filter(s => (s.platform+' '+s.name).toLowerCase().includes(q));
+  const page = state.servicesPage || 1;
+  const {items, pages, page:curPage} = paginate(list, page, perPage);
+  state.servicesPage = curPage;
+  const tbody = document.getElementById('servicesTableBody');
+  tbody.innerHTML = '';
+  items.forEach(s => {
+    const statusBadge = s.status === 'active' ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Hoạt động</span>' : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">Tạm dừng</span>';
+    tbody.innerHTML += `
+      <tr class="border-b hover:bg-gray-50">
+        <td class="px-4 py-3">${s.id}</td>
+        <td class="px-4 py-3">${s.platform}</td>
+        <td class="px-4 py-3">${s.name}</td>
+        <td class="px-4 py-3">${numberWithSep(s.price)}đ</td>
+        <td class="px-4 py-3">${s.minQty}</td>
+        <td class="px-4 py-3">${statusBadge}</td>
+        <td class="px-4 py-3">
+          <button onclick="editService(${s.id})" class="text-blue-600 mr-2"><i class="fas fa-edit"></i></button>
+          <button onclick="deleteService(${s.id})" class="text-red-600"><i class="fas fa-trash"></i></button>
+        </td>
+      </tr>
+    `;
+  });
+  renderPager('servicesPager', curPage, pages, (p)=>{ state.servicesPage = p; renderServicesTable(); });
+}
+
+/* ===========================
+   Services CRUD (uses API adapter)
+*/
+async function addService(){
+  const platform = prompt('Nền tảng (Facebook/Instagram/TikTok/YouTube):');
+  if(!platform) return;
+  const name = prompt('Tên dịch vụ:');
+  if(!name) return;
+  const price = prompt('Giá (đ/1000):', '50');
+  if(price === null) return;
+  const minQty = prompt('Số lượng tối thiểu:', '100');
+  if(minQty === null) return;
+  const svc = {platform, name, price: Number(price), minQty: Number(minQty), status:'active'};
+  try { await API.createService(svc); await loadAllData(); alert('Thêm dịch vụ thành công'); } catch(err){ alert('Lỗi khi thêm: '+err.message); }
+}
+
+async function editService(id){
+  const s = (state.services || []).find(x=>x.id===id);
+  if(!s) return alert('Không tìm thấy dịch vụ');
+  const newPrice = prompt('Giá mới (đ/1000):', s.price);
+  if(newPrice === null) return;
+  const newStatus = prompt('Trạng thái (active / paused):', s.status);
+  try { await API.updateService(id, {price:Number(newPrice), status:newStatus}); await loadAllData(); alert('Cập nhật thành công'); } catch(err){ alert('Lỗi: '+err.message); }
+}
+
+async function deleteService(id){
+  if(!confirm('Xóa dịch vụ này?')) return;
+  try { await API.deleteService(id); await loadAllData(); alert('Đã xóa'); } catch(err){ alert('Lỗi: '+err.message); }
+}
+
+/* ===========================
+   Orders render (search/status filter/pagination)
+*/
+function renderOrdersTable(){
+  const q = (document.getElementById('ordersSearch').value || '').toLowerCase();
+  const status = document.getElementById('ordersStatusFilter').value;
+  const perPage = Number(document.getElementById('ordersPerPage').value || 10);
+  let list = (state.orders || []).filter(o => (o.id+' '+o.user+' '+o.service).toLowerCase().includes(q));
+  if(status) list = list.filter(o => o.status === status);
+  const {items, pages, page:curPage} = paginate(list, state.ordersPage || 1, perPage);
+  state.ordersPage = curPage;
+  const tbody = document.getElementById('ordersTableBody'); tbody.innerHTML = '';
+  items.forEach(o => {
+    const statusBadge = o.status === 'completed' ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Hoàn thành</span>' : o.status === 'processing' ? '<span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">Đang xử lý</span>' : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">Thất bại</span>';
+    tbody.innerHTML += `<tr class="border-b hover:bg-gray-50"><td class="px-4 py-3">${o.id}</td><td class="px-4 py-3">${o.user}</td><td class="px-4 py-3">${o.service}</td><td class="px-4 py-3">${numberWithSep(o.quantity)}</td><td class="px-4 py-3">${numberWithSep(o.price)}đ</td><td class="px-4 py-3">${statusBadge}</td><td class="px-4 py-3">${o.date || ''}</td></tr>`;
+  });
+  renderPager('ordersPager', state.ordersPage, pages, (p)=>{ state.ordersPage = p; renderOrdersTable(); });
+}
+
+/* ===========================
+   Transactions render (search/status/pagination)
+*/
+function renderTransactionsTable(){
+  const q = (document.getElementById('txSearch').value || '').toLowerCase();
+  const status = document.getElementById('txStatusFilter').value;
+  const perPage = Number(document.getElementById('txPerPage').value || 10);
+  let list = (state.transactions || []).filter(t => (t.id+' '+t.user+' '+t.method).toLowerCase().includes(q));
+  if(status) list = list.filter(t => t.status === status);
+  const {items, pages, page:curPage} = paginate(list, state.txPage || 1, perPage);
+  state.txPage = curPage;
+  const tbody = document.getElementById('transactionsTableBody'); tbody.innerHTML = '';
+  items.forEach(t => {
+    const badge = t.status === 'success' ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Thành công</span>' : '<span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">Chờ xử lý</span>';
+    tbody.innerHTML += `<tr class="border-b hover:bg-gray-50"><td class="px-4 py-3">${t.id}</td><td class="px-4 py-3">${t.user}</td><td class="px-4 py-3">${numberWithSep(t.amount)}đ</td><td class="px-4 py-3">${t.method}</td><td class="px-4 py-3">${badge}</td><td class="px-4 py-3">${t.date || ''}</td></tr>`;
+  });
+  renderPager('txPager', state.txPage, pages, (p)=>{ state.txPage = p; renderTransactionsTable(); });
+}
+
+/* ===========================
+   Users render + CRUD via modal (search + pagination)
+*/
+function renderUsersTable(){
+  const q = (document.getElementById('usersSearch').value || '').toLowerCase();
+  const perPage = Number(document.getElementById('usersPerPage').value || 10);
+  const list = (state.users || []).filter(u => (String(u.id)+' '+u.name+' '+u.email).toLowerCase().includes(q));
+  const {items, pages, page:curPage} = paginate(list, state.usersPage || 1, perPage);
+  state.usersPage = curPage;
+  const tbody = document.getElementById('usersTableBody'); tbody.innerHTML = '';
+  items.forEach(u=>{
+    tbody.innerHTML += `<tr class="border-b hover:bg-gray-50">
+      <td class="px-4 py-3">${u.id}</td>
+      <td class="px-4 py-3">${u.name}</td>
+      <td class="px-4 py-3">${u.email}</td>
+      <td class="px-4 py-3">${numberWithSep(u.balance)}đ</td>
+      <td class="px-4 py-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">${u.vip || ''}</span></td>
+      <td class="px-4 py-3">${u.joinDate || ''}</td>
+      <td class="px-4 py-3">
+        <button onclick="openUserModal(${u.id})" class="text-blue-600 mr-2"><i class="fas fa-edit"></i></button>
+        <button onclick="deleteUser(${u.id})" class="text-red-600"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`; 
+  });
+  renderPager('usersPager', state.usersPage, pages, (p)=>{ state.usersPage = p; renderUsersTable(); });
+}
+
+function openUserModal(userId){
+  document.getElementById('userModal').classList.remove('hidden');
+  document.getElementById('userModal').classList.add('flex');
+  if(!userId){
+    // create
+    document.getElementById('userModalTitle').textContent = 'Thêm người dùng';
+    document.getElementById('userIdInput').value = '';
+    document.getElementById('userNameInput').value = '';
+    document.getElementById('userEmailInput').value = '';
+    document.getElementById('userBalanceInput').value = 0;
+    document.getElementById('userVipInput').value = '';
+    document.getElementById('userJoinDateInput').value = new Date().toISOString().slice(0,10);
+    return;
+  }
+  const u = (state.users||[]).find(x=>x.id===userId);
+  if(!u) return alert('Không tìm thấy user');
+  document.getElementById('userModalTitle').textContent = 'Sửa người dùng';
+  document.getElementById('userIdInput').value = u.id;
+  document.getElementById('userNameInput').value = u.name || '';
+  document.getElementById('userEmailInput').value = u.email || '';
+  document.getElementById('userBalanceInput').value = u.balance || 0;
+  document.getElementById('userVipInput').value = u.vip || '';
+  document.getElementById('userJoinDateInput').value = u.joinDate || '';
+}
+
+function closeUserModal(){
+  document.getElementById('userModal').classList.add('hidden');
+  document.getElementById('userModal').classList.remove('flex');
+}
+
+async function saveUserFromModal(){
+  const idVal = document.getElementById('userIdInput').value;
+  const name = document.getElementById('userNameInput').value.trim();
+  const email = document.getElementById('userEmailInput').value.trim();
+  const balance = Number(document.getElementById('userBalanceInput').value || 0);
+  const vip = document.getElementById('userVipInput').value;
+  const joinDate = document.getElementById('userJoinDateInput').value;
+
+  if(!name || !email) return alert('Vui lòng nhập tên và email');
+
+  if(!idVal){
+    // create
+    const u = {name, email, balance, vip, joinDate};
+    try{ await API.createUser(u); await loadAllData(); closeUserModal(); alert('Tạo người dùng thành công'); } catch(err){ alert('Lỗi: '+err.message); }
+  } else {
+    const id = Number(idVal);
+    try{ await API.updateUser(id, {name, email, balance, vip, joinDate}); await loadAllData(); closeUserModal(); alert('Cập nhật thành công'); } catch(err){ alert('Lỗi: '+err.message); }
+  }
+}
+
+async function deleteUser(id){
+  if(!confirm('Xóa user này?')) return;
+  try{ await API.deleteUser(id); await loadAllData(); alert('Đã xóa'); } catch(err){ alert('Lỗi: '+err.message); }
+}
+
+/* ===========================
+   VIP save
+*/
+async function saveVipSettings(){
+  const cfg = {
+    bronze: {min:Number(document.getElementById('bronzeMin').value), discount:Number(document.getElementById('bronzeDiscount').value)},
+    silver: {min:Number(document.getElementById('silverMin').value), discount:Number(document.getElementById('silverDiscount').value)},
+    gold: {min:Number(document.getElementById('goldMin').value), discount:Number(document.getElementById('goldDiscount').value)},
+    platinum: {min:Number(document.getElementById('platinumMin').value), discount:Number(document.getElementById('platinumDiscount').value)},
+    diamond: {min:Number(document.getElementById('diamondMin').value), discount:Number(document.getElementById('diamondDiscount').value)}
+  };
+  try { await API.saveVipConfig(cfg); state.vipConfig = cfg; alert('Lưu cấu hình VIP thành công'); } catch(err){ alert('Lỗi: '+err.message); }
+}
+
+/* ===========================
+   Export / Import / Reset (uses API.exportAll fallback to local)
+*/
+async function exportData(){
+  try {
+    const data = await API.exportAll();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='smm-data-backup.json'; a.click(); URL.revokeObjectURL(a.href);
+    alert('Export thành công');
+  } catch(err){ alert('Lỗi export: '+err.message); }
+}
+
+function importData(event){
+  const input = event.target;
+  if(!input.files || !input.files[0]) return alert('Chưa chọn file');
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    try{
+      const data = JSON.parse(e.target.result);
+      if(data.services) localStorage.setItem('services', JSON.stringify(data.services));
+      if(data.orders) localStorage.setItem('orders', JSON.stringify(data.orders));
+      if(data.transactions) localStorage.setItem('transactions', JSON.stringify(data.transactions));
+      if(data.users) localStorage.setItem('users', JSON.stringify(data.users));
+      if(data.vipConfig) localStorage.setItem('vipConfig', JSON.stringify(data.vipConfig));
+      await loadAllData();
+      alert('Import thành công');
+    } catch(err){ alert('File invalid or parse error'); }
+  };
+  reader.readAsText(input.files[0]);
+  input.value = '';
+}
+
+function resetData(){
+  if(!confirm('Reset toàn bộ dữ liệu? Hành động này không thể hoàn tác!')) return;
+  if(API.useRemote){
+    alert('Chú ý: API remote bật — reset localStorage mà không ảnh hưởng remote. Nếu muốn reset remote, hãy gọi API backend.');
+  }
+  localStorage.clear();
+  initData();
+  loadAllData();
+}
+
+/* ===========================
+   Tab switching
+*/
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+  document.getElementById(tab + 'Tab').classList.remove('hidden');
+  const titles = {dashboard:'Dashboard', services:'Quản lý dịch vụ', vip:'Gói VIP', orders:'Đơn hàng', transactions:'Nạp tiền', users:'Người dùng'};
+  document.getElementById('pageTitle').textContent = titles[tab] || 'Admin';
+  // re-render on show
+  if(tab === 'services') renderServicesTable();
+  if(tab === 'orders') renderOrdersTable();
+  if(tab === 'transactions') renderTransactionsTable();
+  if(tab === 'users') renderUsersTable();
+}
+
+/* ===========================
+   Boot
+*/
+(async function boot(){
+  initData(); // create demo if no remote
+  await loadAllData();
+  showTab('dashboard');
+})();
+
+</script>
+</body>
+</html>
